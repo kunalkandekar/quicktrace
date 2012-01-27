@@ -1,4 +1,7 @@
 #include "quicktrace.h"
+//Common includes
+#include <iostream>
+
 static void debug_print_err(void);
 
 int main(int argc, char *argv[]) {

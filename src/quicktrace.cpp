@@ -1,6 +1,14 @@
 // quicktrace.cpp : Defines the entry point for the console application.
 //
 #include "quicktrace.h"
+//Common includes
+#include <stdlib.h>
+#include <stdio.h>
+#include <ctype.h>
+
+
+#include <iostream>
+#include <string>
 
 #define DEBUG 0
 #define debugout if(DEBUG) cout
@@ -29,7 +37,7 @@ quicktrace::quicktrace() {
 	src_port	= 10080;
 	dst_addr	= 0;
 	dst_port	= 10080;
-	max_hops	= 1;
+	max_hops	= 32;
 	reps		= 1;
 	timeout_ms	= 1500;
 

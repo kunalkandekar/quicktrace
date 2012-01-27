@@ -1,11 +1,6 @@
 #ifndef __QUICKTRACE_H_
 #define __QUICKTRACE_H_
 
-//Common includes
-#include <stdlib.h>
-#include <stdio.h>
-#include <ctype.h>
-
 #ifdef WIN32
 //Windows
 #include <winsock2.h>
@@ -38,11 +33,8 @@
 #define SOCKET int
 #endif
 
-#include <iostream>
-#include <vector>
-#include <string.h>
-
 using namespace std;
+#include <vector>
 
 #define QTRACE_SIZEOF_DGRAM 256
 
