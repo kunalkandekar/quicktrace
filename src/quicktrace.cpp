@@ -2,7 +2,7 @@
 //
 #include "quicktrace.h"
 
-#define DEBUG 1
+#define DEBUG 0
 #define debugout if(DEBUG) cout
 
 static unsigned short checksum(int start, unsigned short *addr, int len) {
