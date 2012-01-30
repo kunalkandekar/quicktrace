@@ -224,18 +224,13 @@ private:
 	unsigned short dport_base;
 	unsigned short dport;
 
-	struct timeval timeout;
-	fd_set	sendset;
-	fd_set	recvset;
-	fd_set	errset;
-	int		max_sock;
 	int		acted;
 	char	buffer[256];
 	//char *buffer = (char*)malloc(256);
 	struct	ip*		rcv_iph;
 	unsigned short	rcv_ip_hdr_len;
 	struct icmp*	rcv_icmph;
-	struct ip*		rcv_icmp_ip;
+	struct ip*		rcv_icmp_iph;
 	struct udphdr*	rcv_icmp_udp;
 
 	unsigned int		hop;
@@ -274,7 +269,8 @@ private:
 		return ms;
 	}
 
-    int set_hdr_incl(SOCKET sock, int flag);
+    int set_hdr_incl(SOCKET sock, int flag);    int hop_count_from_ttl(int ttl, int max_hop_recvd);
+
 	int set_target(unsigned int target_ip);
 
 	int set_target(char *target);
@@ -315,13 +311,15 @@ public:
 	int get_hop_count();
 
 	int get_all_hops(unsigned int *address, double *latency, int count);
+	
+	int get_all_hops(vector<unsigned int> addresses, vector<double> latencies);
 
-	int get_hop(int count, unsigned int *address, double *latency);
+	int get_hop(int index, unsigned int *address, double *latency);
 
     unsigned int get_target_address();
-	unsigned int get_hop_address(int count);
+	unsigned int get_hop_address(int index);
 
-	double get_hop_latency(int count);
+	double get_hop_latency(int index);
 };
 
 #endif
