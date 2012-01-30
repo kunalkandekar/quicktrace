@@ -1,4 +1,5 @@
 .DS_STORE
 src/qtrace
 src/qtrace/qtrace.dSYM/
+src/qtrace/qtrace.dSYM/**/*
 ref/
