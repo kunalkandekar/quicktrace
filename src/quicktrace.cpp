@@ -37,15 +37,15 @@ static unsigned short checksum(int start, unsigned short *addr, int len) {
 
 // Different OSes use different initial TTLs for packets
 //Get estimated hop count based on guesstimate initial TTL
-int quicktrace::hop_count_from_ttl(int ttl, int max_hop_recvd) {
+int quicktrace::hop_count_from_ttl(unsigned int ttl, unsigned int max_hop_recvd) {
     int hops = 0;
-    if(ttl < (32 - max_hop_recvd)) {
+    if(ttl <= (32 - max_hop_recvd)) {
         hops = 32 - ttl + 1;
     }
-    else if(ttl < (64 - max_hop_recvd)) {
+    else if(ttl <= (64 - max_hop_recvd)) {
         hops = 64 - ttl + 1;
     }
-    else if(ttl < (128 - max_hop_recvd)) {
+    else if(ttl <= (128 - max_hop_recvd)) {
         hops = 128 - ttl + 1;
     }
     else {
@@ -92,11 +92,11 @@ quicktrace::~quicktrace() {
 //init functions
 int quicktrace::init() {
 	//initialize vectors
-	hop_addresses.resize(256, 0);
-	hop_latencies.resize(256, 0);
+	hop_addresses.resize(QTRACE_MAX_TTL, 0);
+	hop_latencies.resize(QTRACE_MAX_TTL, 0);
 
-	rep_hop_addr.resize(256, vector<unsigned int>(reps, 0));
-	rep_hop_lat.resize(256, vector<double>(reps, 99999.0));
+	rep_hop_addr.resize(QTRACE_MAX_TTL, vector<unsigned int>(reps, 0));
+	rep_hop_lat.resize(QTRACE_MAX_TTL , vector<double>(reps, 99999.0));
 
 #ifdef WIN32
 	//init winsock 
@@ -138,13 +138,12 @@ int quicktrace::init() {
 }
 
 int quicktrace::ping(SOCKET sock, int send_ttl, int send_rep) {
-    int ret = 0;
     int prev_enable_raw_send = enable_raw_send;
     int prev_use_icmp = use_icmp;
     enable_raw_send = 1;
     use_icmp = 1;
 
-    ret = send(sock, send_ttl, send_rep);
+    int ret = send(sock, send_ttl, send_rep);
 
     enable_raw_send = prev_enable_raw_send;
     use_icmp = prev_use_icmp;
@@ -175,8 +174,6 @@ int quicktrace::send(SOCKET sock, int send_ttl, int send_rep) {
 
     		//recalc checksums
     		//len = sizeof(struct ip) + icmp_hdr_len;
-            //iph->ip_sum = checksum(0, (unsigned short *)iph, (sizeof(struct ip))) + 1;
-            //iph->ip_sum         = 0;    //kernel fills in?
     		icmph->icmp_seq 	= send_rep;  //htons(hopcode);
     		icmph->icmp_cksum 	= 0;
     		icmph->icmp_cksum 	= checksum(chksum, (unsigned short *)icmph, icmp_hdr_len);// + QTRACE_DATA_SIZE);
@@ -196,7 +193,6 @@ int quicktrace::send(SOCKET sock, int send_ttl, int send_rep) {
             //iph->ip_sum         = 0;    //kernel fills in?
     		udph->uh_dport	= htons(dport);
     		udph->uh_sport	= htons(sport);
-    		//udph->uh_sum	= checksum(chksum, (unsigned short *)udph, (sizeof(struct udphdr)));    		
     		udph->uh_sum = checksum(chksum, (unsigned short *)&pseudohdr, (sizeof(pseudoheader)));
         }
         msg = (char*)&pkt;
@@ -450,53 +446,63 @@ int quicktrace::trace(char *target, int max_hop_count, int rep_count) {
 	from_addr.sin_port = htons(src_port);
     
     unsigned int pings = 0;
-	while(!stop_loop) {
+    double prev = get_time_msec();  //use this to space out the outgoing packets a little
+    now = prev + QTRACE_INTER_SEND_INTERVAL_MS;    //to get packets going quick
+    unsigned int timeout_curr = QTRACE_INTER_SEND_INTERVAL_MS;	while(!stop_loop) {
         //use select to multiplex sending and receiving
 		FD_ZERO(&recvset);
 		FD_ZERO(&errset);
 		FD_ZERO(&sendset);
 		
 		acted = 0;
-
+		
 		if(ttl > max_hops_new) {
 			if(++rep < reps) {
 				debugout<<"Rep "<<rep<< " done! next..."<<std::endl;
 				ttl = 1;
 			}
 		}
-		if(ttl <= max_hops_new) {
-    		if(send_seq) {
-    			acted+=2;
-    			ret = send(sock_udp, ttl, rep);
-    			if(ret <= 0) {
-    				debugout<<"error in send "<<ret<<std::endl;
-    				result_code = QTRACE_ERR_SOCK_SENDTO;
-    				stop_loop = 1;
-    				continue;
-    			}
-    			else {
-    				debugout<<"sent ttl="<<ttl<<std::endl;
-    			}
-    			ttl++;
+        //debugout<<"ttl="<<ttl<<" max_hops_new="<<max_hops_new<<" timeout="<<timeout_curr<<"ms..."<<std::endl;
+            
+		if((now - prev) >= QTRACE_INTER_SEND_INTERVAL_MS) { //send packet every 10 msec?
+    		prev = now;
+    		if(ttl <= max_hops_new) {
+        		if(send_seq) {
+        			acted+=2;
+        			ret = send(sock_udp, ttl, rep);
+        			if(ret <= 0) {
+        				debugout<<"error in send "<<ret<<std::endl;
+        				result_code = QTRACE_ERR_SOCK_SENDTO;
+        				stop_loop = 1;
+        				continue;
+        			}
+        			else {
+        				debugout<<"sent ttl="<<ttl<<std::endl;
+        			}
+        			ttl++;
+        		}
+        		else {
+        			//if we are still sending
+        			FD_SET(sock_udp, &sendset);
+        			//debugout<<"set in sendset"<<std::flush;
+        		}
     		}
-    		else {
-    			//if we are still sending
-    			FD_SET(sock_udp, &sendset);
+    		else if(pings < reps) {
+    			FD_SET(sock_icmp, &sendset);
     			//debugout<<"set in sendset"<<std::flush;
     		}
-		}
-		else if(pings < reps) {
-			FD_SET(sock_icmp, &sendset);
-			pings++;
-			//debugout<<"set in sendset"<<std::flush;
+    		else {
+    		    //We're done sending all the packets, wait one last long timeout
+                timeout_curr = timeout_ms;
+    		}
 		}
 
 		FD_SET(sock_icmp, &recvset);
 		FD_SET(sock_udp , &errset);
         FD_SET(sock_icmp, &errset);
 
-		timeout.tv_sec	= (timeout_ms/1000);
-		timeout.tv_usec = (timeout_ms - timeout.tv_sec*1000)*1000;
+		timeout.tv_sec	= (timeout_curr/1000);
+		timeout.tv_usec = (timeout_curr - timeout.tv_sec*1000)*1000;
 
 		ret = select(max_sock, &recvset, &sendset, &errset, &timeout);
 		if(ret < 0) {
@@ -507,12 +513,11 @@ int quicktrace::trace(char *target, int max_hop_count, int rep_count) {
 			stop_loop = 1;
 			continue;
 		}
-		
+		now = get_time_msec();		
 		//Check for recvd packets
 		if(FD_ISSET(sock_icmp, &recvset)) {
 			//read and decode packet
 			acted+=1;
-			now = get_time_msec();
 			ret = recv(sock_icmp);
 			unsigned short int hopcode = 0;
 			if(ret > 0) {
@@ -552,72 +557,75 @@ int quicktrace::trace(char *target, int max_hop_count, int rep_count) {
     					}
     				}
 				}
-				else if ((rcv_icmph->icmp_type == ICMP_HOST_UNREACHABLE) 
-						|| (rcv_icmph->icmp_type == ICMP_ECHO_REPLY)) {
-					//if(rcv_iph->ip_src == dst_addr) {
-				    debugout<<"[pong type="<<int(rcv_icmph->icmp_type)<<" code="<<int(rcv_icmph->icmp_code)<<" seq="<<int(rcv_icmph->icmp_seq)<<"]"<<flush;
+				else if (rcv_icmph->icmp_type == ICMP_ECHO_REPLY) {
+					//if(rcv_iph->ip_src == dst_addr)
 					if(hop_addr == dst_addr) {
                         int est_hop_count = hop_count_from_ttl(rcv_iph->ip_ttl, max_hop_recvd);
                         hop = est_hop_count - 1;
                         if(hop < last_hop) {
     						last_hop = hop;
-                            rcvrep = (rcv_icmph->icmp_seq > 0 ? rcv_icmph->icmp_seq - 1 : 0);
-    					    debugout<<"\nTTL is "<<rcv_iph->ip_ttl<<", estimated hop count="<<est_hop_count<<" tentative last_hop="<<last_hop<<"...";
-    						//this must be the last hop!!
-    						hop_addresses[hop] = hop_addr;	//rcv_iph->ip_src;
-    						rep_hop_addr[hop][rcvrep] = hop_addr;	//rcv_iph->ip_src;
-    
-    						if((last_hop + 1) < max_hops_new) {   //not sure why I put this here now...
-    							max_hops_new = last_hop + 1;
-    						}
-    						rep_hop_lat[hop][rcvrep] = now - rep_hop_lat[hop][rcvrep];
         				}
+                        rcvrep = rcv_icmph->icmp_seq;
+					    debugout<<"TTL is "<<int(rcv_iph->ip_ttl)<<", estimated hop count="<<est_hop_count
+					           <<" (max recvd="<<max_hop_recvd<<") tentative last_hop="<<last_hop<<"..."<<std::endl;
+						//this must be the last hop!!
+						hop_addresses[hop] = hop_addr;	//rcv_iph->ip_src;
+						rep_hop_addr[hop][rcvrep] = hop_addr;	//rcv_iph->ip_src;
+
+						if((last_hop + 1) < max_hops_new) {   //not sure why I put this here now...
+							max_hops_new = last_hop + 1;
+						}
+
+                        //in case of ping, the MAX_TTL - 1 element in the vector would contain the latencies
+                        debugout<<"RTT ["<<hop<<"]["<<rcvrep<<"] from "<<rep_hop_lat[hop][rcvrep]<<"/"<<rep_hop_lat[QTRACE_MAX_TTL - 1][rcvrep]<<"..."<<endl;
+                        rep_hop_lat[hop][rcvrep] = now - rep_hop_lat[QTRACE_MAX_TTL - 1][rcvrep];
     				}
     				else {
-    				    debugout<<"\nTTL is "<<rcv_iph->ip_ttl<<", but already received last_hop="<<last_hop<<"...";
+    				   cout<<"\nWeird, got ICMP echo reply from unintended node: "<<inet_ntoa(from_addr.sin_addr)<<"..."<<rcvrep<<std::endl;
     				}
-				}
-				else {
-				   debugout<<"\nWeird, got ICMP echo reply from unintended node: "<<inet_ntoa(from_addr.sin_addr)<<"..."<<rcvrep<<std::endl;
-				}
-				//continue;
-			}
-/*
-			if ((rcv_icmph->icmp_code == 1)			//HOST_UNREACHABLE
-				|| (rcv_icmph->icmp_code == 2)		//PROTO_UNREACHABLE
-				|| (rcv_icmph->icmp_code == 3)) {	//PORT_UNREACHABLE
-				//the ICMP error incurred at the last hop
-			}
+				    //continue;
+    			}
+/*    			
+                else if (rcv_icmph->icmp_type == ICMP_HOST_UNREACHABLE) {
+                    debugout<<"[pong type="<<int(rcv_icmph->icmp_type)<<" code="<<int(rcv_icmph->icmp_code)<<" seq="<<int(rcv_icmph->icmp_seq)<<"]"<<flush;                
+                }
+    			if ((rcv_icmph->icmp_code == 1)			//HOST_UNREACHABLE
+    				|| (rcv_icmph->icmp_code == 2)		//PROTO_UNREACHABLE
+    				|| (rcv_icmph->icmp_code == 3)) {	//PORT_UNREACHABLE
+    				//the ICMP error incurred at the last hop
+    			}
 */
-			debugout<<" hop="<<hop<<" @ "<<inet_ntoa(from_addr.sin_addr)<<" rep="<<rcvrep<<std::endl;
-			if(hop > max_hop_recvd) {
-				max_hop_recvd = hop;
-			}
-
-			//cout<<"\n"<<hop<<"/"<<last_hop<<" received "<<ret<<" bytes from "<<inet_ntoa(from_addr.sin_addr)<<flush;
-		    if((hop >= max_hops) || (rcvrep >= reps)) {
-		        //error, possibly corrupt data, drop it
-                debugout<<" oob: hop="<<hop<<" >= max("<<max_hops<<") or rep="<<rcvrep<<" >= maxrep("<<reps<<")"<<std::endl;
-		    }
-		    
-			//check if we received all intermediate hops
-			if(rep >= reps) {
-				stop_loop = 1; //if we have, stop listening and break
-				unsigned int missing = 0;
-				for(unsigned int i = 0; i < last_hop; i++) {
-					missing = 0;
-					for(unsigned int j = 0; j < reps; j++) {
-						if(rep_hop_addr[i][j] == 0) {
-							missing++;
-						}
-					}
-					if(missing >= reps) {
-						//dont stop
-    					debugout<<"At hop "<<i<<"/"<<last_hop<<" missing="<<missing<<" of reps="<<reps<<std::endl;
-						stop_loop = 0;
-						break;
-					}
-				}
+    			debugout<<" hop="<<hop<<" @ "<<inet_ntoa(from_addr.sin_addr)<<" rep="<<rcvrep<<std::endl;
+    			if(hop > max_hop_recvd) {
+    				max_hop_recvd = hop;
+    			}
+    
+    			//cout<<"\n"<<hop<<"/"<<last_hop<<" received "<<ret<<" bytes from "<<inet_ntoa(from_addr.sin_addr)<<flush;
+    		    if((hop >= max_hops) || (rcvrep >= reps)) {
+    		        //error, possibly corrupt data, drop it
+                    debugout<<" oob: hop="<<hop<<" >= max("<<max_hops<<") or rep="<<rcvrep<<" >= maxrep("<<reps<<")"<<std::endl;
+    		    }
+    		    
+    			//check if we received all intermediate hops
+    			if(rep >= reps) {
+    				stop_loop = 1; //if we have, stop listening and break
+    				unsigned int missing = 0;
+    				for(unsigned int i = 0; i < last_hop; i++) {
+    					missing = 0;
+    					for(unsigned int j = 0; j < reps; j++) {
+    						if(rep_hop_addr[i][j] == 0) {
+    							missing++;
+    						}
+    					}
+    					if(missing >= reps) {
+    						//dont stop
+        					debugout<<"At hop "<<i<<"/"<<last_hop<<" missing="<<missing<<" of reps="<<reps<<std::endl;
+    						stop_loop = 0;
+    						break;
+    					}
+    				}
+    				if(stop_loop) debugout<<"At hop "<<hop<<"/"<<last_hop<<" got all! Stopping... "<<std::endl;
+    			}
 			}
 		}
 
@@ -644,14 +652,14 @@ int quicktrace::trace(char *target, int max_hop_count, int rep_count) {
 			acted+=2;
 			//send one packet
 			//set TTL
-		    ret = ping(sock_icmp, 255, pings);
-
+		    ret = ping(sock_icmp, QTRACE_MAX_TTL, pings);
 			if(ret < 0) {
     			close_sockets();
 				result_code = QTRACE_ERR_SOCK_SENDTO;
 				cleanup();
 				return QTRACE_ERR;
 			}
+			pings++;
 			//cout<<"\nPacket sent "<<ret<<" bytes "<<(enable_raw_send ? "(raw)" : "")<<" with ttl="<<ttl<<flush;
 		}
 
@@ -662,8 +670,9 @@ int quicktrace::trace(char *target, int max_hop_count, int rep_count) {
 			stop_loop = 1;
 		}
 
-		if(acted==0) {
+		if((acted==0) && (timeout_curr == timeout_ms)){
 			//timedout!!
+			debugout<<"timed out! ttl="<<ttl<<"/"<<max_hops_new<<" reps="<<rep<<"/"<<reps<<" pings="<<pings<<"/"<<reps<<" ..."<<std::endl;
 			stop_loop = 1;
 		}
 	}
@@ -679,10 +688,10 @@ int quicktrace::trace(char *target, int max_hop_count, int rep_count) {
 	for(unsigned int i = 0; i < hop_count; i++) {
 		//cout<<"\n"<<(i+1)<<" "<<inet_ntoa(*( struct in_addr *)&hop_addresses[i])<<"\t"<<flush;
 		hop_latencies[i] = 999999;
-		for(rep = 0; rep < reps; rep++) {
-			//cout<<rep_hop_lat[i][rep]<<" "<<flush;
-			if(rep_hop_lat[i][rep] < hop_latencies[i]) {
-				hop_latencies[i] = rep_hop_lat[i][rep];
+		for(unsigned int r = 0; r < reps; r++) {
+			//cout<<rep_hop_lat[i][r]<<" "<<flush;
+			if(rep_hop_lat[i][r] < hop_latencies[i]) {
+				hop_latencies[i] = rep_hop_lat[i][r];
 			}
 		}
 		if(hop_latencies[i] == 999999) {
@@ -848,9 +857,11 @@ int quicktrace::get_all_hops(unsigned int *address, double *latency, int count) 
     return len;	
 }
 
-int quicktrace::get_all_hops(vector<unsigned int> addresses, vector<double> latencies) {
-    std::copy(hop_addresses.begin(), hop_addresses.end(), addresses.begin());
-    std::copy(hop_latencies.begin(), hop_latencies.end(), latencies.begin());
+int quicktrace::get_all_hops(vector<unsigned int> &addresses, vector<double> &latencies) {
+    addresses.resize(hop_count, 0);
+    latencies.resize(hop_count, 0);
+    std::copy(hop_addresses.begin(), hop_addresses.begin() + hop_count, addresses.begin());
+    std::copy(hop_latencies.begin(), hop_latencies.begin() + hop_count, latencies.begin());
     return addresses.size();
 }
 

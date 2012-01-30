@@ -38,6 +38,10 @@ using namespace std;
 
 #define QTRACE_SIZEOF_DGRAM 256
 
+#define QTRACE_MAX_TTL 64
+
+#define QTRACE_INTER_SEND_INTERVAL_MS 10
+
 // ICMP packet types
 #define ICMP_ECHO_REPLY			0
 #define ICMP_HOST_UNREACHABLE	3
@@ -174,7 +178,7 @@ private:
 	unsigned short		 dst_port;
 	unsigned int		 max_hops;
 	unsigned int		 reps;
-	int					 timeout_ms;
+	unsigned int		 timeout_ms;
 	unsigned int		 last_hop;
 	unsigned int         hop_count;
 
@@ -269,7 +273,7 @@ private:
 		return ms;
 	}
 
-    int set_hdr_incl(SOCKET sock, int flag);    int hop_count_from_ttl(int ttl, int max_hop_recvd);
+    int set_hdr_incl(SOCKET sock, int flag);    int hop_count_from_ttl(unsigned int ttl, unsigned int max_hop_recvd);
 
 	int set_target(unsigned int target_ip);
 
@@ -312,7 +316,7 @@ public:
 
 	int get_all_hops(unsigned int *address, double *latency, int count);
 	
-	int get_all_hops(vector<unsigned int> addresses, vector<double> latencies);
+	int get_all_hops(vector<unsigned int> &addresses, vector<double> &latencies);
 
 	int get_hop(int index, unsigned int *address, double *latency);
 

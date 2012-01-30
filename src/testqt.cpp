@@ -4,6 +4,8 @@
 
 static void debug_print_err(void);
 
+#define USE_C_ARRAYS 0
+
 int main(int argc, char *argv[]) {
 	int ret = 0;
 	char *dest;
@@ -60,6 +62,7 @@ int main(int argc, char *argv[]) {
 		debug_print_err();
 	}
 	else {
+#if USE_ARRAYS
 		int hop_count = qt.get_hop_count();
 		unsigned int addr;
 		char *str_addr;
@@ -70,6 +73,19 @@ int main(int argc, char *argv[]) {
 				<<" "<<str_addr<<((const char*)(("          ") + (strlen(str_addr) - 7)))
 				<<"\t"<<qt.get_hop_latency(i)<<" ms";
 		}
+#else
+        vector<unsigned int> addresses;
+        vector<double>       latencies;
+        qt.get_all_hops(addresses, latencies);
+		int hop_count =  addresses.size();
+		char *str_addr;
+		for(int i = 0; i < hop_count; i++) {
+			str_addr = inet_ntoa(*(struct in_addr*)&addresses[i]);
+			cout<<"\n"<<((i+1 < 10) ? " " : "" )<<(i+1)
+				<<" "<<str_addr<<((const char*)(("          ") + (strlen(str_addr) - 7)))
+				<<"\t"<<latencies[i]<<" ms";
+		}
+#endif
 	}
 	cout<<"\nDone in "<<ms<<" ms: "
 		<<qt.get_result_code()<<":"
