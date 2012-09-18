@@ -10,7 +10,7 @@ seconds? Think it's absurd that a few non-responsive intermediate hops should
 hold everything else up? Just need to get a quick idea what the IP route looks
 like? Well, look no further! This code will get you a (mostly) complete route to
 a given IP address in about the time it used to take you to send a couple of 
-pings! Why, it's so fast, it oughta be called "raceroute"!
+pings! Why, it's so durn fast, it oughta be called "Raceroute"!
 
 Tested on MacOS X (10.6.8) and Linux (Ubuntu 10.10).
 
@@ -30,11 +30,24 @@ succession without waiting for responses, and listening for ICMP response
 packets using without blocking using select. Timestamps are recorded while 
 sending and receiving packets, and approximate RTTs are calculated as the 
 difference in timestamps for a given TTL. Additionally, ping (ICMP echo request)
-packets are also sent to the destination IP, and the total hop count is 
-estimated from the TTL of the corresponding ICMP echo reply ("pong"). Any inter-
-mediate hops that fail to respond within the timeout are assumed to be non-
-responding and dis-regarded (these show up with IPs 0.0.0.0 and RTTs of -1 in 
+packets are also sent to the destination IP, and the final total hop count is 
+estimated from the TTL of the corresponding ICMP echo reply ("pong"). Estimating
+hop count from the pong TTL is trickier than it seems because different OSes
+send packets with different initial TTLs. Nonetheless QuickTrace is
+able to quickly make an educated guess as to the initial TTL of the packet 
+(based on the ranges of TTLs the pong TTL falls in.) Another method used is to 
+detect when host-unreachable ICMP responses are received, and estimate an upper-
+bound for the hop count from that, since they are sent when the packet reaches 
+the destination and nobody is listening on the destination port. Again, this is 
+a heuristic and not a sure-fire method for many reasons. Still, these methods
+enable us to quickly estimate the total path hop count. Any intermediate hops 
+that fail to respond within the timeout are assumed to be non-responding and 
+pre-emptively dis-regarded (these show up with IPs 0.0.0.0 and RTTs of -1 in 
 the results.)
+
+Note that final hop count estimation is prone to give incorrect results if:
+1) The final hop responds with an unconventional or incorrect initial TTL.
+2) QuickTrace guesses the initial TTL incorrectly. 
 
 
 BUILD
@@ -58,14 +71,14 @@ anyway.
 ORIGIN
 ------
 Of course, since it returns much less information and is less reliable than your
-average traceroute, it's probably useful for much fewer use cases. However, 
-there is a reason this code does only what it does, and its speed is only a 
-(very useful) side-effect.
+average traceroute, it's probably useful for fewer use cases. However, there is 
+a reason this code does only what it does, and its speed is only a (very useful)
+side-effect.
 
 This was implemented for work related to my Master's thesis on P2P networks, 
 which was pretty cool, if I do say so myself. We discovered that with knowledge 
 of only the intermediate hop IP addresses and end-to-end latencies to a small 
-(about 5) set of "landmark" nodes, peers joining anywhere in a P2P network 
+(about 3 - 5) set of "landmark" nodes, peers joining anywhere in a P2P network 
 could be efficiently routed through the overlay to their nearest IP network 
 neighbor with over 95% accuracy using a completely distributed algorithm. Per-
 hop latencies and DNS hostnames of intermediate hops were nice to know, but 
@@ -76,6 +89,46 @@ traceroute utility provided by all OS's was too slow and provided way more
 information than was needed. Hence, this was developed as an alternative method 
 to quickly discover only the information that was useful to us.
 
+"PRIOR ART"
+-----------
+So, googling for "fastest traceroute" brought up a couple of other tools that do
+something similar to QuickTrace, and apparently have been around for a while. 
+However, QuickTrace is still somewhat superior, although narrowly so. Reviewing 
+the alternatives, it seems the "unique selling point" for QuickTrace is how it 
+intelligently knows when to terminate correctly. As described above, it 
+basically does this by sending a ping in parallel with the probe packets, and 
+estimating the final hop count based on the TTL of the pong packet. This lets it
+terminate much faster and more deterministically, especially if all intermediate
+hops also respond correctly. 
+
+Also, the output looks more correct, since the last hop and destination IP 
+address are determined from the pong (or host unreachable) packets. For example,
+often a target hostname will correctly resolve to a destination IP address, and 
+it is to this address that probes and pings are send. However the machine at 
+that IP often does not respond to pings/probes (try probing google.com and 
+microsoft.com, for example,) and hence traceroute tools do not typically display
+that IP as the final hop. This is most probably because they fail to estimate 
+the route hop count, and hence, even when they know the destination IP address,
+they do not know at which hop to display it.
+
+The earliest implementation I could find for a fast traceroute was here:
+Project Argus - Network topology discovery, monitoring, history, and 
+visualization.
+http://www.cs.cornell.edu/boom/1999sp/projects/network%20topology/topology.html
+
+Another one is here: ftrace - Fast Traceroute for Win32
+http://www.r1ch.net/stuff/ftrace/
+(Seems just like plain old traceroute to me…)
+
+Yet another one:
+HyperTrace
+http://www.analogx.com/contents/download/Network/htrace/Freeware.htm
+(This one is at least much faster than the one above.)
+
+ALTERNATE NAMES
+---------------
+- Raceroute
+- QuickRoute
 
 Example C++ source (testqt.cpp):
 ------------------------------

@@ -151,7 +151,9 @@ struct pseudoheader {
 
 #define QTRACE_MAX_TTL_LIMIT            64  //64 hops ought to be enough for anybody
 #define QTRACE_MAX_TTL_DEFAULT          32
-#define QTRACE_INTER_SEND_INTERVAL_MS   10
+#define QTRACE_DEFAULT_TIMEOUT_MS       1000
+#define QTRACE_INTER_SEND_INTERVAL_MS   05
+#define QTRACE_SELECT_TIMEOUT_MS        10
 #define QTRACE_DATA_SIZE                56
 
 struct qtrace_packet {
@@ -175,6 +177,7 @@ private:
     unsigned short      dst_port;
     
     unsigned int        timeout_ms;
+    unsigned int        interval_ms;
     unsigned int        last_hop;
     unsigned int        hop_count;
     int                 is_done;
@@ -266,6 +269,7 @@ public:
 
     void    set_sequential_trace(int seq);
     void    set_timeout_ms(int tms);
+    void    set_probe_interval_ms(int ims);
     void    add_stop_hop(unsigned int hop); //not fully implemented
 
 //actions

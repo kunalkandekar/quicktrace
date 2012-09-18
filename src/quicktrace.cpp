@@ -39,6 +39,7 @@ static unsigned short checksum(int start, unsigned short *addr, int len) {
 
 // Different OSes use different initial TTLs for packets
 // Get estimated hop count based on guesstimate initial TTL
+//http://www.map.meteoswiss.ch/map-doc/ftp-probleme.htm
 int quicktrace::hop_count_from_ttl(unsigned int ttl, unsigned int max_hop_recvd) {
     int hops = 0;
     if(ttl <= (32 - max_hop_recvd)) {
@@ -62,7 +63,8 @@ quicktrace::quicktrace() {
     dst_addr    = 0;
     dst_port    = 10080;
 
-    timeout_ms  = 1500;
+    timeout_ms  = QTRACE_DEFAULT_TIMEOUT_MS;
+    interval_ms = QTRACE_INTER_SEND_INTERVAL_MS;
 
     hop_count   = 0;
 
@@ -174,8 +176,8 @@ int quicktrace::send(SOCKET sock, int send_ttl, int send_rep, int send_raw, int 
         else {
             //init UDP header
             udph = (struct udphdr *)&pkt.l4hdr.udp;
-            udph->uh_sport    = htons(src_port);
-            udph->uh_dport    = htons(dst_port);
+            //udph->uh_sport    = htons(src_port);
+            //udph->uh_dport    = htons(dst_port);
             udph->uh_ulen     = htons(sizeof(struct udphdr) + QTRACE_DATA_SIZE);
             udph->uh_sum      = 0;
             //recalc checksums
@@ -214,7 +216,8 @@ int quicktrace::send(SOCKET sock, int send_ttl, int send_rep, int send_raw, int 
 
     debugout<<"\tSent to "<<inet_ntoa(to_addr.sin_addr)
            <<" hop="<<send_ttl<<"/hopcode="<<hopcode
-           <<" rep="<<send_rep<<" len="<<len<<" ret="<<ret
+           <<" rep="<<send_rep<<" sport="<<sport<<" dport="<<dport
+           <<" len="<<len<<" ret="<<ret
            <<" (raw="<<enable_raw_send<<" icmp="<<use_icmp<<")"
            <<" t="<<rep_hop_lat[send_ttl - 1][send_rep]<<std::endl;
     return ret;
@@ -443,8 +446,8 @@ int quicktrace::trace(const char *target, int max_hop_count, int rep_count) {
     unsigned int pings = 0;
 
     double prev = get_time_msec();  //use this to space the outgoing packets out a bit
-    now = prev + QTRACE_INTER_SEND_INTERVAL_MS;    //to get packets going quick
-    unsigned int timeout_curr = QTRACE_INTER_SEND_INTERVAL_MS;
+    now = prev + interval_ms + 1;    //to get packets going quick
+    unsigned int timeout_curr = QTRACE_SELECT_TIMEOUT_MS;
     while(!stop_loop) {
         //use select to multiplex sending and receiving
         FD_ZERO(&recvset);
@@ -461,7 +464,7 @@ int quicktrace::trace(const char *target, int max_hop_count, int rep_count) {
         }
 
         //send packet every 10 msec
-        if((now - prev) >= QTRACE_INTER_SEND_INTERVAL_MS) { 
+        if((now - prev) >= interval_ms) { 
             prev = now;
             if(ttl <= max_hops_new) {
                 if(send_seq) {
@@ -544,9 +547,9 @@ int quicktrace::trace(const char *target, int max_hop_count, int rep_count) {
                     hop = (unsigned int)(hopcode / 100);
                     rcvrep = hopcode - (hop * 100);//ntohs(rcv_icmp_udp->uh_sport) - sport_base;
                     hop--;  // to index from 0
-                    debugout<<" udp="<<(rcv_icmp_udp->uh_dport)
-                            <<"="<<ntohs(rcv_icmp_udp->uh_dport)
-                            <<" - " <<dport_base<<std::flush;
+                    debugout<<" udp:"<<(rcv_icmp_udp->uh_dport)
+                            <<":"<<ntohs(rcv_icmp_udp->uh_dport)
+                            <<" - " <<dport_base<<"="<<hopcode<<std::flush;
 #endif
 
                     if((hop >= max_hops) || (rcvrep >= reps)) {
@@ -556,8 +559,17 @@ int quicktrace::trace(const char *target, int max_hop_count, int rep_count) {
                     }
                     else {
                         //hop = rcv_icmp_iph->ip_ttl - 1;
-                        rep_hop_addr[hop][rcvrep] = hop_addr;    //rcv_iph->ip_src;
-                        hop_addresses[hop]        = hop_addr;    
+                        rep_hop_addr[hop][rcvrep] = hop_addr;   //rcv_iph->ip_src;
+                        /*if((hop_addresses[hop] != 0) && (hop_addresses[hop] != hop_addr)) {
+                            debugout<<"\nWeird, IP addresses don't match between probes: "
+                                    <<inet_ntoa(*(struct in_addr*)&hop_addr);
+                            debugout<<" != "<<inet_ntoa(*(struct in_addr*)&hop_addresses[hop])
+                                    <<" for rep "<<rcvrep<<"..."<<std::endl;
+                        }*/
+
+                        if(hop_addresses[hop] == 0) {          //this is necessary because sometimes routers mess up TTLs(?!?)
+                            hop_addresses[hop] = hop_addr;
+                        }
                         rep_hop_lat[hop][rcvrep]  = now - rep_hop_lat[hop][rcvrep];
 
                         if(rcv_icmph->icmp_type  == ICMP_HOST_UNREACHABLE) {
@@ -565,11 +577,16 @@ int quicktrace::trace(const char *target, int max_hop_count, int rep_count) {
                                 icmp_host_unreachable_recvd = true;
                                 debugout<<"\nDestination IP matched, hop="
                                         <<hop<<" tentative last_hop="<<last_hop
+                                        <<" lat="<<rep_hop_lat[hop][rcvrep]
                                         <<"... "<<std::flush;
                                 //this could be the last hop!!
                                 if(hop < last_hop) {
                                     last_hop = hop;
                                 }
+                                if(max_hop_recvd < last_hop) {
+                                    max_hop_recvd = last_hop;
+                                }
+                                //if( min_dest_ping > rep_hop_lat[hop][rcvrep]) min_dest_ping = rep_hop_lat[hop][rcvrep];
                             }
                             //else should never happen, because for ICMP type 
                             //ICMP_HOST_UNREACHABLE, address should be destination
@@ -582,13 +599,15 @@ int quicktrace::trace(const char *target, int max_hop_count, int rep_count) {
                 }
                 else if (rcv_icmph->icmp_type == ICMP_ECHO_REPLY) {
                     //if(rcv_iph->ip_src == dst_addr)
+                    /*
+                    //skipping this check because sometimes we get messed up pids (e.g. try google.com)
                     if(rcv_icmph->icmp_id != pid) {
                         debugout<<"\nReceived ICMP ECHO REPLY not intended for us."
                                 <<" Got="<<int(rcv_icmph->icmp_id)
                                 <<" expected="<<pid
                                 <<", dropping..."<<std::endl;
                     }
-                    else if(hop_addr == dst_addr) {
+                    else */ if(hop_addr == dst_addr) {
                         icmp_echo_reply_recvd = true;
                         unsigned int est_hop_count 
                             = hop_count_from_ttl(rcv_iph->ip_ttl, max_hop_recvd);
@@ -745,7 +764,6 @@ int quicktrace::trace(const char *target, int max_hop_count, int rep_count) {
         }
     }
 
-
     if(hop_addresses[last_hop] != dst_addr) {
         //dst-addr! Not reached!
         debugout<<"Last hop ["<<last_hop<<"] "<<inet_ntoa(*(struct in_addr*)&hop_addresses[last_hop]);
@@ -848,6 +866,10 @@ void quicktrace::set_sequential_trace(int seq) {
 
 void quicktrace::set_timeout_ms(int tms) {
     timeout_ms = tms;
+}
+
+void quicktrace::set_probe_interval_ms(int ims) {
+    interval_ms = ims;
 }
 
 void quicktrace::add_stop_hop(unsigned int hop) {

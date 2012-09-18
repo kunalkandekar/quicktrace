@@ -18,20 +18,37 @@ int main(int argc, char *argv[]) {
     if(argc > 1) {
         dest = argv[1];
         if(argc > 2) {
-            max_hops = atoi(argv[2]);
-            if(argc > 3) {
-                reps = atoi(argv[3]);
-                if(argc > 4) {
-                    qt.set_timeout_ms(atoi(argv[4]));
-                    if(argc > 5) {
-                        qt.set_sequential_trace(1);
-                    }
+            for(int i = 2; i < argc; i++) {
+                if(!strcmp("-m", argv[i])) {
+                    if(++i >= argc) goto QTRACE_USAGE;
+                    max_hops = atoi(argv[i]);
+                }
+                else if(!strcmp("-q", argv[i])) {
+                    if(++i >= argc) goto QTRACE_USAGE;
+                    reps = atoi(argv[i]);
+                }
+                else if(!strcmp("-t", argv[i])) {
+                    if(++i >= argc) goto QTRACE_USAGE;
+                    qt.set_timeout_ms(atoi(argv[i]));
+                }                else if(!strcmp("-z", argv[i])) {
+                    if(++i >= argc) goto QTRACE_USAGE;
+                    qt.set_probe_interval_ms(atoi(argv[i]));
+                }
+                else if(!strcmp("--seq", argv[i])) {
+                    qt.set_sequential_trace(1);
+                }
+                else if(!strcmp("-h", argv[i])) {
+                    goto QTRACE_USAGE;
+                }
+                else {
+                    goto QTRACE_USAGE;
                 }
             }
         }
     }
     else {
-        std::cout<<"Usage: qtrace <dest-ip> [max-hops] [reps-per-hop] [timeout-ms]"<<endl;
+QTRACE_USAGE:
+        std::cout<<"Usage: qtrace <dest-ip> [-m max-ttl] [-q probes-per-hop] [-z pause-ms] [-t timeout-ms] [--seq]"<<std::endl;
         return -1;
     }
 
