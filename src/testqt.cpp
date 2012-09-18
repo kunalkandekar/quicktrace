@@ -17,6 +17,8 @@ int main(int argc, char *argv[]) {
 
     if(argc > 1) {
         dest = argv[1];
+        if(!strcmp("-h", dest))
+            goto QTRACE_USAGE;
         if(argc > 2) {
             for(int i = 2; i < argc; i++) {
                 if(!strcmp("-m", argv[i])) {
@@ -48,7 +50,7 @@ int main(int argc, char *argv[]) {
     }
     else {
 QTRACE_USAGE:
-        std::cout<<"Usage: qtrace <dest-ip> [-m max-ttl] [-q probes-per-hop] [-z pause-ms] [-t timeout-ms] [--seq]"<<std::endl;
+        std::cout<<"Usage: qtrace <dest> [-m max-ttl] [-q probes-per-hop] [-z pause-ms] [-t timeout-ms] [--seq]"<<std::endl;
         return -1;
     }
 

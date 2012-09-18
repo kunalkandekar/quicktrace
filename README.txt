@@ -61,7 +61,8 @@ Win* builds.
 
 USAGE
 -----
-qtrace <dest-ip> [max-hops] [reps-per-hop] [timeout-ms]
+qtrace <dest> [-m max-ttl] [-q probes-per-hop] [-z pause-ms] [-t timeout-ms] 
+              [--seq]
 
 If you think a few hops are incorrectly missing from the resulting path, just 
 try running it again! Heck, run it 3 more times! It only takes a second or so
