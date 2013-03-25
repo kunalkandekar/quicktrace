@@ -256,14 +256,15 @@ also always wondered why there were no tools that provided a UDP version of
 tracert on Windows. I tried to fill the gap, and based on my attempts to do it 
 with UDP, it seems nigh impossible, at least not without access to undocumented 
 APIs. A time exceeded ICMP response for a low TTL UDP packet is never received 
-by the ICMP raw socket on windows; instead the UDP socket returns an error, and
-the error code given is ECONNRESET (or WSAECONNRESET for WinSock.) This error is
-actually for "Network dropped connection or reset", which is absurd because UDP
-is a connectionless protocol, so dropping or resetting a connection as in TCP is
-impossible. Instead, Windows uses this hack, whereby it apparently intercepts 
-the ICMP response and instead returns an error to let you know that the TTL on 
-your UDP packet expired; but it won't let you do anything else, much less get 
-the IP address of the router that sent the ICMP packet.
+by the ICMP raw socket on windows; instead the UDP socket returns an error on a
+subsequent *receive* call, and the error code given is ECONNRESET (or 
+WSAECONNRESET for WinSock.) This error is actually for "Network dropped 
+connection or reset", which is absurd because UDP is a connectionless protocol, 
+so dropping or resetting a connection as in TCP is impossible. Instead, Windows
+uses this hack, whereby it apparently intercepts the ICMP response and instead
+returns an error on the next receive call to let you know that the TTL on your 
+UDP packet expired; but it won't let you do anything else, much less get the IP
+address of the router that sent the ICMP packet.
 
 Anyway, as long as it works, apart from programmer difficuly, probing using ICMP
 as opposed to UDP shouldn't have any qualitative differences, right? Not quite.
