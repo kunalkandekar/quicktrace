@@ -66,7 +66,7 @@ BUILD
 -----
 *nix:  Run "make" to build on *nix. 
 
-Windows / VIsual Studio: Open the quicktrace.sln Visual Studio project and 
+Windows / Visual Studio: Open the quicktrace.sln Visual Studio project and 
 navigate to BUILD -> Build Solution (or hit the shortcut key, F7). 
 
 Remember to change the build setting in the dropdown in the menu bar to 
