@@ -15,15 +15,18 @@
 // *NIX - tested on OSX and LINUX
 #include <sys/time.h>
 #include <sys/socket.h>
+
+#ifndef _MSC_VER_WITH_GCC    // for compiling MSVC-specific code woth GCC
 #include <netinet/in.h>
 #include <netinet/in_systm.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
+#include <netinet/udp.h>
+#include <netinet/tcp.h>
+#endif
 
 #define __FAVOR_BSD 1
 
-#include <netinet/udp.h>
-#include <netinet/tcp.h>
 #include <sysexits.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -90,13 +93,13 @@ static const char * const qtrace_result_str[] = {
 
 
 #ifdef _MSC_VER
-#pragma pack(1)
+#pragma pack(push, 1)
 #define __PACK
 #else
 #define __PACK __attribute__((__packed__))
 #endif
 
-#if defined __IS_WINDOWS_
+#if defined(__IS_WINDOWS_) || defined(_MSC_VER_WITH_GCC)
 // The IP header
 struct ip {
  unsigned char          ip_hl:4, ip_v:4; // Length of header in dwords, Version of IP
@@ -107,8 +110,8 @@ struct ip {
  unsigned char          ip_ttl;         // Time to live
  unsigned char          ip_p;           // Protocol number (TCP, UDP etc)
  unsigned short int     ip_sum;         // IP checksum
- unsigned int           ip_src;
- unsigned int           ip_dst;
+ in_addr                ip_src;
+ in_addr                ip_dst;
 } __PACK;
 
 // UDP header
@@ -169,18 +172,16 @@ struct pseudoheader {
 #endif
 #define QTRACE_SELECT_TIMEOUT_MS        10
 #define QTRACE_DATA_SIZE                56
+#define QTRACE_L4_HDR_SIZE              8   // ICMP or UDP
 
 struct qtrace_packet {
     struct ip           ip;
-    union {
-        struct icmp     icmp;
-        struct udphdr   udp;
-    } l4hdr;
+    unsigned char       l4hdr[QTRACE_L4_HDR_SIZE];
     char                data[QTRACE_DATA_SIZE];
 } __PACK;
 
 #ifdef _MSC_VER
-#pragma pack()
+#pragma pack(pop)
 #endif
 
 class quicktrace {

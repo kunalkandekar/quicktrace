@@ -41,7 +41,7 @@
 
 static unsigned short checksum(int start, unsigned short *addr, int len) {
     register int nleft = len;
-    register int sum = 0;
+    register unsigned long sum = 0;
     register unsigned short *w = addr;
     unsigned short answer = 0;
 
@@ -50,12 +50,11 @@ static unsigned short checksum(int start, unsigned short *addr, int len) {
         nleft -= 2;
     }
     if (nleft == 1) {
-        *(u_char *) (&answer) = *(u_char *) w;
-        sum += answer;
+        sum += *(unsigned char *)w;
     }
     sum = (sum >> 16) + (sum & 0xffff);
     sum += (sum >> 16);
-    answer = ~sum;
+    answer = (unsigned short) ~sum;
     return (answer);
 }
 
@@ -201,20 +200,21 @@ int quicktrace::send(SOCKET sock, int send_ttl, int send_rep, int send_raw, int 
         if(send_icmp || use_icmp_only) {
             //init ICMP header
             int icmp_len = icmp_hdr_len + QTRACE_DATA_SIZE;
-            icmph = (struct icmp *)&pkt.l4hdr.icmp;
+            icmph = (struct icmp *)&pkt.l4hdr;
             icmph->icmp_type  = ICMP_ECHO_REQUEST;
             icmph->icmp_code  = 0;
             icmph->icmp_id    = pid;
             icmph->icmp_seq   = htons(hopcode);  //htons(hopcode);
             icmph->icmp_cksum = 0;
             icmph->icmp_cksum = checksum(0, (unsigned short *)icmph, icmp_len);
+            std::cout<<"\n icmp header size: "<<sizeof(struct icmp)<<"\n";
 
             iph->ip_len = len = sizeof(struct ip) + icmp_len;
 
         }
         else {
             //init UDP header
-            udph = (struct udphdr *)&pkt.l4hdr.udp;
+            udph = (struct udphdr *)&pkt.l4hdr;
             //udph->uh_sport    = htons(src_port);
             //udph->uh_dport    = htons(dst_port);
             udph->uh_ulen     = htons(sizeof(struct udphdr) + QTRACE_DATA_SIZE);
